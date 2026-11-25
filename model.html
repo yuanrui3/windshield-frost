@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c2230">
+  <title>Thermal model · West Lafayette windshield forecast</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header"><div class="shell header-inner">
+    <a class="brand" href="./" aria-label="West Lafayette windshield forecast home"><span aria-hidden="true">❄</span> Windshield forecast</a>
+    <nav aria-label="Main navigation"><a href="./">Forecast</a><a aria-current="page" href="./model.html">Thermal model</a></nav>
+  </div></header>
+  <main class="shell article">
+    <div class="intro"><div><p class="location">West Lafayette, Indiana</p><h1>The thermal model</h1><p>How the windshield cools, picks up frost, and warms again.</p></div></div>
+
+    <section class="panel"><h2>Why the glass can be colder than the air</h2>
+      <p>At night a windshield emits infrared energy toward the sky. Under open sky it can lose more energy than it receives from the air and its surroundings. A carport blocks much of that exchange. Wind moves the glass temperature toward the outdoor air temperature. Low clouds typically send more infrared heat toward the glass than thin high clouds.</p>
+      <p class="equation">Glass heat capacity × temperature change per second = outdoor heat exchange + cabin heat exchange + net infrared + absorbed sunlight + heat released or used by phase changes.</p>
+      <p>Open-Meteo supplies hourly air temperature, dew point, wind, cloud layers, precipitation and sunlight. The solver uses shorter time steps and runs neighboring scenarios for uncertainty. The site's labels describe scenario agreement. They are qualitative, with no measured probability attached.</p>
+    </section>
+
+    <section class="panel"><h2>How frost starts and melts</h2>
+      <p>The frost point is the glass temperature at which the available water vapor saturates over ice. When the glass gets below it, crystals can grow. If the glass is already wet, surface water can freeze as the glass reaches 32°F.</p>
+      <p>After sunrise, the heat balance first warms the glass and then pays the energy cost of melting the ice. The model estimates the time for the outside ice to clear with the car parked. Local shadows, glass thickness, drifting clouds, rain and the amount of ice can move the estimate. Snow buildup and freezing-rain glaze can behave differently and are outside this estimate.</p>
+    </section>
+
+    <section id="cabin" class="panel"><h2>Does leaving the side windows open matter?</h2>
+      <p>Yes. Ventilation changes the cabin's temperature and humidity. That matters most for condensation or frost on the inside. The outside of the windshield also exchanges some heat with the cabin through the glass, so opening a window can affect the outside temperature slightly. The direction depends on whether the cabin is warmer or cooler than the outdoor air.</p>
+      <p>The window setting changes cabin ventilation in the model. The frost forecast is for the <strong>outside</strong> of the front windshield. An inside-fog report is logged separately.</p>
+    </section>
+
+    <section class="panel"><h2>Why mirrors and side glass behave differently</h2>
+      <p>Side windows and mirrors are typically more upright and see less open sky than the front or rear glass. The mirror housing can also shelter the glass. That reduces radiative cooling when temperatures are close to the frost threshold. In colder conditions those surfaces can still cross it. Angle, housing, coating, and whether a mirror heater was on also matter.</p>
+    </section>
+
+    <section class="panel"><h2>How observations can improve the model</h2>
+      <p>A record of the original forecast, parking setup, surface, check time, and actual frost is more useful than weather data alone. Start with the front windshield and keep the other surfaces as separate comparisons. Once there are enough frost and clear mornings, tune a few parameters, such as effective sky exposure or how much indirect sun reaches the glass, then evaluate against later observations before trusting the change. Melt observations help tune daytime heating separately.</p>
+      <p>One field study measured dew and glass temperatures across eight cars at five sites. It offers evidence for surface differences, but it does not provide a downloadable dataset of frost and thaw times. Purdue Mesonet measurements can check local forecast inputs such as temperature and sunlight. Your observations supply the missing labels for your car and parking spot. The site records them and counts misses, with calibration left for a later fit and test.</p>
+      <ul class="source-list">
+        <li><a href="https://open-meteo.com/en/docs">Open-Meteo forecast variables</a></li>
+        <li><a href="https://www.weather.gov/source/zhu/ZHU_Training_Page/fog_stuff/Dew_Frost/Dew_Frost.htm">National Weather Service dew and frost science</a></li>
+        <li><a href="https://www.mdpi.com/2073-4433/13/1/65">Parked-car glass temperature and dew field study</a></li>
+        <li><a href="https://ag.purdue.edu/indiana-state-climate/purdue-mesonet/data-hub-instructions/">Purdue Mesonet weather and solar measurements</a></li>
+        <li><a href="https://www.eol.ucar.edu/data-software/conventions-and-standards/water-vapor-pressure-formulations">NCAR vapor-pressure equations</a></li>
+        <li><a href="https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/WR011i005p00742">Brutsaert clear-sky radiation model</a> · <a href="https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2008JD009838">Observed cirrus radiation</a></li>
+        <li><a href="https://nvlpubs.nist.gov/nistpubs/jres/23/jresv23n6p643_A1b.pdf">NIST heat of fusion of ice</a></li>
+      </ul>
+    </section>
+  </main>
+  <footer class="shell footer"><p>Forecast weather by <a href="https://open-meteo.com/">Open-Meteo</a>.</p><a href="./">Back to forecast</a></footer>
+</body>
+</html>

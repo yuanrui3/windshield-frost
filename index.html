@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A windshield frost and natural thaw forecast for West Lafayette, Indiana.">
+  <meta name="theme-color" content="#0c2230">
+  <title>Windshield forecast · West Lafayette</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <a class="brand" href="./" aria-label="West Lafayette windshield forecast home"><span aria-hidden="true">❄</span> Windshield forecast</a>
+      <nav aria-label="Main navigation">
+        <a aria-current="page" href="./">Forecast</a>
+        <a href="./model.html">Thermal model</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <section class="intro">
+      <div><p class="location">West Lafayette, Indiana</p><h1>Will I need to scrape?</h1><p>Windshield frost at departure and when it may melt on its own.</p></div>
+      <button class="secondary" id="refresh" type="button">Refresh forecast</button>
+    </section>
+    <p id="status" role="status" class="status">Loading local weather…</p>
+
+    <div class="forecast-layout">
+      <section class="panel results" aria-labelledby="forecast-date">
+        <div id="days" class="days" aria-label="Forecast mornings"></div>
+        <div class="result-header">
+          <div><h2 id="forecast-date">Morning forecast</h2><p id="verdict-copy">Waiting for the hourly weather forecast.</p></div>
+          <p id="risk" class="risk">—</p>
+        </div>
+        <dl class="metrics">
+          <div><dt>Glass at departure</dt><dd id="glass">—</dd></div>
+          <div><dt>Air at departure</dt><dd id="air">—</dd></div>
+          <div><dt>Natural melt</dt><dd id="melt">—</dd></div>
+        </dl>
+        <p id="melt-note" class="muted"></p>
+        <div class="chart">
+          <h3>Overnight glass temperature</h3>
+          <div class="legend" aria-hidden="true"><span class="glass-key">Windshield</span><span class="air-key">Air</span><span class="frost-key">Frost point</span></div>
+          <canvas id="trace" width="720" height="255" role="img" aria-describedby="trace-summary">Hourly windshield, air, and frost-point temperatures.</canvas>
+          <p id="trace-summary" class="muted"></p>
+        </div>
+      </section>
+
+      <section class="panel settings" aria-labelledby="settings-title">
+        <h2 id="settings-title">Your parking setup</h2>
+        <form id="settings">
+          <label>Departure time<input type="time" name="departure" value="08:00" required></label>
+          <label>Overnight parking
+            <select name="parking">
+              <option value="open" selected>Open sky</option>
+              <option value="sheltered">Beside buildings or trees</option>
+              <option value="covered">Under a roof or carport</option>
+            </select>
+          </label>
+          <label>Morning sunlight
+            <select name="sun">
+              <option value="shade">Mostly shade</option>
+              <option value="moderate" selected>Indirect or angled light</option>
+              <option value="full">Direct sun</option>
+            </select>
+          </label>
+          <label>Side windows overnight
+            <select name="windows">
+              <option value="closed" selected>Closed</option>
+              <option value="cracked">Cracked open</option>
+              <option value="open">Open</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" name="wet"> Windshield starts wet</label>
+        </form>
+        <p class="muted">Times are local. The estimate assumes the defroster is off.</p>
+        <a href="./model.html#cabin">How windows affect the glass</a>
+      </section>
+    </div>
+
+    <section class="panel observations" aria-labelledby="log-title">
+      <div class="result-header"><div><h2 id="log-title">What was on the glass?</h2><p>Log what you saw to compare it with the saved forecast.</p></div><button id="export" class="secondary" type="button">Export log</button></div>
+      <form id="observation">
+        <div class="form-grid">
+          <label>Morning<input type="date" name="date" required></label>
+          <label>Surface
+            <select name="surface"><option value="front">Front windshield</option><option value="rear">Rear windshield</option><option value="side">Side glass</option><option value="mirrors">Side mirrors</option></select>
+          </label>
+          <label>What you saw
+            <select name="outcome" required><option value="">Choose an observation</option><option value="clear">Clear</option><option value="frost">Outside frost</option><option value="ice">Outside ice film</option><option value="inside-fog">Inside fog or frost</option></select>
+          </label>
+          <label>Time checked <small>optional</small><input type="time" name="observedTime"></label>
+          <label>Fully melted at <small>optional</small><input type="time" name="meltTime"></label>
+          <label>Note <small>optional</small><input type="text" name="note" maxlength="180" placeholder="Thin frost, partial shade…"></label>
+        </div>
+        <p class="muted" id="observation-prediction"></p>
+        <button class="primary" type="submit">Save observation</button>
+        <p id="log-status" class="status" role="status"></p>
+      </form>
+      <p id="score-summary" class="muted"></p>
+      <div id="history" class="history"></div>
+    </section>
+  </main>
+  <footer class="shell footer">
+    <p>Forecasts from <a href="https://open-meteo.com/">Open-Meteo</a>. Settings and observations stay in this browser.</p>
+    <a href="./model.html">Model and sources</a>
+  </footer>
+</body>
+</html>
