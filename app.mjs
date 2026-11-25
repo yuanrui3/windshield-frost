@@ -1,8 +1,9 @@
-import { DEFAULTS, forecastUrl, getLocalDate, nextLocalDate, predict } from './model.mjs';
+import { DEFAULTS, MODEL_VERSION, forecastUrl, getLocalDate, nextLocalDate, predict } from './model.mjs?v=20261124-1';
 
 const $ = id => document.getElementById(id);
 const preferencesKey = 'windshield-frost.preferences.v1';
 const historyKey = 'windshield-frost.observations.v1';
+const feedbackKey = 'windshield-frost.feedback.v1';
 const forecastsKey = 'windshield-frost.forecasts.v1';
 const weatherKey = 'windshield-frost.weather.v1';
 const localZone = 'America/Indiana/Indianapolis';
@@ -24,6 +25,14 @@ const observations = {
   'inside-fog': 'Fog or frost inside', inside: 'Fog or frost inside', wet: 'Wet, no frost',
 };
 const surfaces = { front: 'Front windshield', rear: 'Rear windshield', side: 'Side windows', mirrors: 'Side mirrors' };
+const feedbackKinds = {
+  'false-positive': { label: 'False alarm', expectedRisk: 'likely', outcome: 'clear' },
+  'false-negative': { label: 'Missed frost', expectedRisk: 'low', outcome: 'frost' },
+  'true-positive': { label: 'Correct frost forecast', expectedRisk: 'likely', outcome: 'frost' },
+  'true-negative': { label: 'Correct clear forecast', expectedRisk: 'low', outcome: 'clear' },
+  'uncertain-frost': { label: 'Uncertain forecast, found frost', expectedRisk: 'possible', outcome: 'frost' },
+  'uncertain-clear': { label: 'Uncertain forecast, glass clear', expectedRisk: 'possible', outcome: 'clear' },
+};
 const surfaceButtons = [...document.querySelectorAll('.surface-options [data-surface]')];
 const forecastSurfaces = surfaceButtons.map(button => button.dataset.surface);
 // Keep "mirrors" in observations so older exports and entries retain their surface ID.
@@ -32,6 +41,8 @@ function observationSurface(surface) {
 }
 const form = $('settings');
 const observationForm = $('observation');
+const feedbackForm = $('feedback-form');
+const publicFeedbackForm = $('feedback-share-link').href;
 const canvas = $('trace');
 
 let selectedDate;
@@ -42,6 +53,7 @@ let weather;
 let fetchedAt;
 let currentForecast;
 let reports = readStorage(historyKey, []);
+let feedback = readStorage(feedbackKey, []);
 let savedForecasts = readStorage(forecastsKey, {});
 let emailForecast = readEmailForecast();
 
@@ -97,8 +109,10 @@ function readEmailForecast() {
   }
   const wet = query.get('wet');
   if (wet === 'true' || wet === 'false') settings.wet = wet === 'true';
+  const version = query.get('modelVersion');
   return {
     date, surface: 'front', risk, issuedAt, source: 'evening email', settings,
+    ...(/^[a-zA-Z0-9_.-]{1,40}$/.test(version ?? '') ? { modelVersion: version } : {}),
     glass: Number.isFinite(glass) && glass > -150 && glass < 180 ? glass : null,
     meltStart: fromTimestamp(query.get('meltStart')), meltEnd: fromTimestamp(query.get('meltEnd')),
   };
@@ -127,7 +141,7 @@ function applySettings(settings) {
 function deviceForecast(prediction, settings, surface) {
   return {
     date: prediction.date, surface, risk: prediction.risk, issuedAt: fetchedAt, source: 'browser forecast',
-    savedAt: Date.now(), settings: prediction.settings, glass: prediction.atDeparture.glass,
+    savedAt: Date.now(), modelVersion: MODEL_VERSION, settings: prediction.settings, glass: prediction.atDeparture.glass,
     meltStart: prediction.melt?.start ?? null, meltEnd: prediction.melt?.end ?? null,
   };
 }
@@ -271,6 +285,7 @@ function render(unavailableLabel = 'Forecast unavailable') {
   }
   if (savedNew) store(forecastsKey, savedForecasts);
   paintObservationLink();
+  paintFeedbackPrediction();
 }
 
 function paintForecast(prediction, settings) {
@@ -443,6 +458,121 @@ function forecastForObservation(date, surface) {
   return older.length === 1 ? older[0] : null;
 }
 
+function snapshotForFeedback(date, surface, time) {
+  const forecast = forecastForObservation(date, observationSurface(surface));
+  if (!forecast) return null;
+  const availableAt = Math.max(forecast.issuedAt, forecast.savedAt ?? 0);
+  const issued = getLocalDate(new Date(availableAt));
+  const checkTime = time || forecast.settings.departure;
+  if (issued > date || (issued === date && localHours.format(availableAt) >= checkTime)) return null;
+  return forecast;
+}
+
+function paintFeedbackPrediction() {
+  const { date, surface, observedTime } = feedbackForm.elements;
+  const snapshot = snapshotForFeedback(date.value, surface.value, observedTime.value);
+  $('feedback-prediction').textContent = snapshot
+    ? `Saved forecast for ${toReadableTime(snapshot.settings.departure)} · ${verdict[snapshot.risk]}.`
+    : 'You can report the forecast you remember. This browser has no matching earlier prediction.';
+  const previous = feedback.find(entry => entry.date === date.value && entry.surface === surface.value);
+  const entry = previous && (!observedTime.value || previous.observedTime === observedTime.value)
+    ? previous : { date: date.value, surface: surface.value, observedTime: observedTime.value, forecast: snapshot };
+  $('feedback-share-link').href = feedbackUrl(entry);
+}
+
+function feedbackUrl(entry) {
+  const url = new URL(publicFeedbackForm);
+  const params = url.searchParams;
+  params.set('usp', 'pp_url');
+  if (dateFromQuery(entry.date)) params.set('entry.420673815', entry.date);
+  if (forecastSurfaces.includes(entry.surface)) params.set('entry.857551643', surfaces[observationSurface(entry.surface)]);
+  const snap = entry.forecast;
+  const risk = snap?.risk ?? entry.forecastRisk;
+  params.set('entry.1264634741', verdict[risk] ?? 'Unknown');
+  const kind = feedbackKinds[entry.direction];
+  if (kind) {
+    const condition = risk === 'possible' || kind.expectedRisk === 'possible' ? 'uncertain' :
+      kind.expectedRisk === 'likely' ? 'frost' : 'clear';
+    const observed = kind.outcome === 'frost' ? 'glass frosted' : 'glass was clear';
+    params.set('entry.796835699', `Forecast ${condition}, ${observed}`);
+  }
+  if (entry.observedTime) params.set('entry.272590887', entry.observedTime);
+  if (snap) {
+    const { date, risk, issuedAt, savedAt, modelVersion, source, settings } = snap;
+    // Share only the forecast provenance and coarse exposure settings needed
+    // to interpret the observation. Older records can lack some of these fields.
+    params.set('entry.1271491538', JSON.stringify({
+      date, surface: snap.surface ?? 'front', risk,
+      issuedAt, savedAt, modelVersion, source, departure: settings.departure,
+      parking: settings.parking, sun: settings.sun, wet: settings.wet,
+    }));
+  }
+  return url.href;
+}
+
+function feedbackMatch(risk, expected) {
+  if (!risk) return 'unavailable';
+  if (risk === 'possible') return 'uncertain';
+  return risk === expected ? 'consistent' : 'different';
+}
+
+function feedbackEvidence(entry) {
+  if (entry.match === 'unavailable') return 'User-reported forecast only.';
+  if (entry.match === 'uncertain') return 'The saved forecast was “possible”.';
+  if (entry.match === 'different') return `The saved forecast was “${verdict[entry.forecastRisk].toLowerCase()}”, which differs from your report.`;
+  return `The saved forecast was “${verdict[entry.forecastRisk].toLowerCase()}”.`;
+}
+
+function paintFeedbackHistory() {
+  $('feedback-saved').hidden = feedback.length === 0;
+  $('feedback-count').textContent = `Your feedback (${feedback.length})`;
+  $('feedback-history').replaceChildren(...[...feedback].reverse().map(entry => {
+    const title = feedbackKinds[entry.direction].label;
+    const surface = surfaces[observationSurface(entry.surface)];
+    const item = makeElement('li', '', `${dateLabel(entry.date)} · ${surface} · ${title}. ${feedbackEvidence(entry)}`);
+    const link = makeElement('a', '', 'Review and share');
+    link.href = feedbackUrl(entry);
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    item.append(link);
+    return item;
+  }));
+  $('export').disabled = reports.length + feedback.length === 0;
+}
+
+function saveFeedback(event) {
+  event.preventDefault();
+  const data = new FormData(feedbackForm);
+  const date = dateFromQuery(data.get('date'));
+  const surface = data.get('surface');
+  const direction = event.submitter?.value;
+  const kind = feedbackKinds[direction];
+  if (!date || date > getLocalDate() || !forecastSurfaces.includes(surface) || !kind) {
+    $('feedback-status').textContent = 'Choose a morning through today, a surface and what happened.';
+    return;
+  }
+  const observedTime = data.get('observedTime') || null;
+  const forecast = snapshotForFeedback(date, surface, observedTime);
+  const forecastRisk = forecast?.risk ?? null;
+  const summary = { date, surface, direction, outcome: kind.outcome, observedTime, forecastRisk,
+    match: feedbackMatch(forecastRisk, kind.expectedRisk), recordedAt: Date.now() };
+  const latest = readStorage(feedbackKey, feedback);
+  const previous = Array.isArray(latest) ? latest : feedback;
+  const updated = previous.some(entry => entry.date === date && entry.surface === surface);
+  feedback = previous.filter(entry => entry.date !== date || entry.surface !== surface);
+  const entry = { ...summary, forecast };
+  feedback.push(entry);
+  feedback.sort((a, b) => a.date.localeCompare(b.date) || a.recordedAt - b.recordedAt);
+  const saved = store(feedbackKey, feedback);
+  let result = updated ? 'Updated' : 'Saved';
+  if (!saved) result = 'Kept for this visit';
+  $('feedback-status').textContent = `${result} in this browser · ${dateLabel(date)} · ${surfaces[observationSurface(surface)]} · ${kind.label}. ${feedbackEvidence(summary)}` +
+    (saved ? '' : ' Export the log to keep it.');
+  $('feedback-share-link').href = feedbackUrl(entry);
+  paintFeedbackHistory();
+  window.dispatchEvent(new CustomEvent('frostfeedbacksaved', { detail: summary }));
+}
+
 function observationLabel(report) {
   return observations[report.outcome] ?? report.outcome;
 }
@@ -531,7 +661,7 @@ function paintHistory() {
     }));
   }
   paintScore();
-  $('export').disabled = reports.length === 0;
+  $('export').disabled = reports.length + feedback.length === 0;
 }
 
 function saveObservation(event) {
@@ -562,7 +692,7 @@ function saveObservation(event) {
 }
 
 function exportHistory() {
-  const blob = new Blob([JSON.stringify({ observations: reports }, null, 2) + '\n'], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ observations: reports, feedback }, null, 2) + '\n'], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const download = makeElement('a');
   download.href = url;
@@ -574,6 +704,7 @@ function exportHistory() {
 }
 
 if (!Array.isArray(reports)) reports = [];
+if (!Array.isArray(feedback)) feedback = [];
 if (!savedForecasts || typeof savedForecasts !== 'object' || Array.isArray(savedForecasts)) savedForecasts = {};
 applySettings({ ...DEFAULTS, ...(readStorage(preferencesKey, {})) });
 const observedDate = observationForm.elements.namedItem('date');
@@ -581,6 +712,8 @@ if (observedDate) {
   observedDate.max = getLocalDate();
   observedDate.value = emailForecast && emailForecast.date <= getLocalDate() ? emailForecast.date : getLocalDate();
 }
+feedbackForm.elements.date.max = getLocalDate();
+feedbackForm.elements.date.value = observedDate.value;
 if (emailForecast) {
   saveSnapshot(emailForecast, 'email');
   store(forecastsKey, savedForecasts);
@@ -588,11 +721,22 @@ if (emailForecast) {
 }
 
 let observationStarted = false;
+let feedbackStarted = false;
+feedbackForm.addEventListener('input', () => { feedbackStarted = true; });
+feedbackForm.addEventListener('change', () => {
+  $('feedback-status').textContent = '';
+  paintFeedbackPrediction();
+});
+feedbackForm.addEventListener('submit', saveFeedback);
 observationForm.addEventListener('input', () => { observationStarted = true; });
 for (const button of surfaceButtons) {
   button.addEventListener('click', () => {
     selectedSurface = button.dataset.surface;
     renderSelection();
+    if (!feedbackStarted) {
+      feedbackForm.elements.surface.value = selectedSurface;
+      paintFeedbackPrediction();
+    }
     if (!observationStarted) {
       observationForm.elements.namedItem('surface').value = observationSurface(selectedSurface);
       paintObservationLink();
@@ -615,5 +759,7 @@ $('export').addEventListener('click', exportHistory);
 if ('ResizeObserver' in window) new ResizeObserver(() => paintChart(currentForecast)).observe(canvas);
 
 paintHistory();
+paintFeedbackHistory();
+paintFeedbackPrediction();
 paintObservationLink();
 refresh();

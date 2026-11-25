@@ -6,8 +6,8 @@
   <meta name="description" content="Frost and natural thaw forecasts for windshields, side windows and side mirrors in West Lafayette, Indiana.">
   <meta name="theme-color" content="#0c2230">
   <title>Windshield forecast · West Lafayette</title>
-  <link rel="stylesheet" href="./styles.css">
-  <script type="module" src="./app.mjs"></script>
+  <link rel="stylesheet" href="./styles.css?v=20261124-1">
+  <script type="module" src="./app.mjs?v=20261124-1"></script>
 </head>
 <body>
   <header class="site-header">
@@ -15,6 +15,7 @@
       <a class="brand" href="./" aria-label="West Lafayette windshield forecast home"><span aria-hidden="true">❄</span> Windshield forecast</a>
       <nav aria-label="Main navigation">
         <a aria-current="page" href="./">Forecast</a>
+        <a href="#feedback">Rate forecast</a>
         <a href="./model.html">Thermal model</a>
       </nav>
     </div>
@@ -83,6 +84,36 @@
       </section>
     </div>
 
+    <section id="feedback" class="panel feedback" aria-labelledby="feedback-title">
+      <h2 id="feedback-title">Was the forecast right?</h2>
+      <p>Report what you saw on the outside of the glass at departure.</p>
+      <form id="feedback-form">
+        <div class="feedback-fields">
+          <label>Morning<input type="date" name="date" required></label>
+          <label>Surface<select name="surface"><option value="front">Front windshield</option><option value="side">Side windows</option><option value="mirror">Side mirrors</option></select></label>
+          <label>Time checked (optional)<input type="time" name="observedTime"></label>
+        </div>
+        <p id="feedback-prediction" class="muted"></p>
+        <fieldset class="feedback-choices">
+          <legend>What happened?</legend>
+          <div>
+            <button type="submit" name="direction" value="false-positive"><strong>False positive</strong><span>Forecast frost, found clear glass</span></button>
+            <button type="submit" name="direction" value="false-negative"><strong>False negative</strong><span>Forecast clear, found frost</span></button>
+            <button type="submit" name="direction" value="true-positive"><strong>Correct frost forecast</strong><span>Forecast frost, found frost</span></button>
+            <button type="submit" name="direction" value="true-negative"><strong>Correct clear forecast</strong><span>Forecast clear, found clear glass</span></button>
+            <button type="submit" name="direction" value="uncertain-frost"><strong>Uncertain forecast</strong><span>Found frost on the glass</span></button>
+            <button type="submit" name="direction" value="uncertain-clear"><strong>Uncertain forecast</strong><span>Found clear glass</span></button>
+          </div>
+        </fieldset>
+        <p id="feedback-status" role="status" class="status"></p>
+      </form>
+      <div id="feedback-share"><a id="feedback-share-link" href="https://docs.google.com/forms/d/e/1FAIpQLSdFvIkZhCKUVrcJW-McYvqTa_dDBEvq2vWTArxF3j6Q-E4p8A/viewform" target="_blank" rel="noopener noreferrer">Share feedback via Google Form</a><p class="muted">The buttons above save your report in this browser. Review and submit the form to share it with the project.</p></div>
+      <details id="feedback-saved" hidden>
+        <summary id="feedback-count">Your feedback</summary>
+        <ul id="feedback-history"></ul>
+      </details>
+    </section>
+
     <section class="panel observations" aria-labelledby="log-title">
       <div class="result-header"><div><h2 id="log-title">What was on the glass?</h2><p>Log what you saw to compare it with the saved forecast.</p></div><button id="export" class="secondary" type="button">Export log</button></div>
       <form id="observation">
@@ -107,7 +138,7 @@
     </section>
   </main>
   <footer class="shell footer">
-    <p>Forecasts from <a href="https://open-meteo.com/">Open-Meteo</a>. Settings and observations stay in this browser.</p>
+    <p>Forecasts from <a href="https://open-meteo.com/">Open-Meteo</a>. Settings and the detailed log stay in this browser.</p>
     <a href="./model.html">Model and sources</a>
   </footer>
 </body>

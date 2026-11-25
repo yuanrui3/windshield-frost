@@ -12,6 +12,9 @@ const VISIBLE_ICE = 0.005;
 const WATER_CAPACITY = 0.25;
 const WET_GLASS = 0.06;
 
+// Change this when the numerical forecast changes so observations can be compared by version.
+export const MODEL_VERSION = '2026-11-24.1';
+
 export const DEFAULTS = Object.freeze({
   departure: '08:00',
   parking: 'open',

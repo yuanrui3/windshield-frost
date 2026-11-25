@@ -1,4 +1,4 @@
-import { DEFAULTS, forecastUrl, getLocalDate, nextLocalDate, predict } from './model.mjs';
+import { DEFAULTS, MODEL_VERSION, forecastUrl, getLocalDate, nextLocalDate, predict } from './model.mjs';
 
 const zone = 'America/Indiana/Indianapolis';
 const localClock = new Intl.DateTimeFormat('en-US', {
@@ -51,14 +51,14 @@ let reportUrl = null;
 if (process.env.FROST_SITE_URL && !first.unavailable) {
   const url = new URL(process.env.FROST_SITE_URL);
   url.search = new URLSearchParams({
-    date: first.date, risk: first.risk, issued, departure: settings.departure,
+    date: first.date, risk: first.risk, issued, modelVersion: MODEL_VERSION, departure: settings.departure,
     glass: String(first.glassF), parking: settings.parking, sun: settings.sun,
     windows: settings.windows, wet: String(settings.wet),
     ...(first.meltStart ? { meltStart: first.meltStart } : {}),
     ...(first.meltEnd ? { meltEnd: first.meltEnd } : {}),
   });
-  url.hash = 'log-title';
+  url.hash = 'feedback';
   reportUrl = url.href;
 }
 
-console.log(JSON.stringify({ issued, settings, days, reportUrl }, null, 2));
+console.log(JSON.stringify({ issued, modelVersion: MODEL_VERSION, settings, days, reportUrl }, null, 2));
