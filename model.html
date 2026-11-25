@@ -13,11 +13,11 @@
     <nav aria-label="Main navigation"><a href="./">Forecast</a><a aria-current="page" href="./model.html">Thermal model</a></nav>
   </div></header>
   <main class="shell article">
-    <div class="intro"><div><p class="location">West Lafayette, Indiana</p><h1>The thermal model</h1><p>How the windshield cools, picks up frost, and warms again.</p></div></div>
+    <div class="intro"><div><p class="location">West Lafayette, Indiana</p><h1>The thermal model</h1><p>How windshields, side windows and mirrors cool overnight and clear after sunrise.</p></div></div>
 
     <section class="panel"><h2>Why the glass can be colder than the air</h2>
       <p>At night a windshield emits infrared energy toward the sky. Under open sky it can lose more energy than it receives from the air and its surroundings. A carport blocks much of that exchange. Wind moves the glass temperature toward the outdoor air temperature. Low clouds typically send more infrared heat toward the glass than thin high clouds.</p>
-      <p class="equation">Glass heat capacity × temperature change per second = outdoor heat exchange + cabin heat exchange + net infrared + absorbed sunlight + heat released or used by phase changes.</p>
+      <p class="equation">Glass heat capacity × temperature change per second = heat exchange with the air and the back of the glass + net infrared + absorbed sunlight + heat released or used by phase changes.</p>
       <p>Open-Meteo supplies hourly air temperature, dew point, wind, cloud layers, precipitation and sunlight. The solver uses shorter time steps and runs neighboring scenarios for uncertainty. The site's labels describe scenario agreement. They are qualitative, with no measured probability attached.</p>
     </section>
 
@@ -26,18 +26,22 @@
       <p>After sunrise, the heat balance first warms the glass and then pays the energy cost of melting the ice. The model estimates the time for the outside ice to clear with the car parked. Local shadows, glass thickness, drifting clouds, rain and the amount of ice can move the estimate. Snow buildup and freezing-rain glaze can behave differently and are outside this estimate.</p>
     </section>
 
-    <section id="cabin" class="panel"><h2>Does leaving the side windows open matter?</h2>
-      <p>Yes. Ventilation changes the cabin's temperature and humidity. That matters most for condensation or frost on the inside. The outside of the windshield also exchanges some heat with the cabin through the glass, so opening a window can affect the outside temperature slightly. The direction depends on whether the cabin is warmer or cooler than the outdoor air.</p>
-      <p>The window setting changes cabin ventilation in the model. The frost forecast is for the <strong>outside</strong> of the front windshield. An inside-fog report is logged separately.</p>
+    <section id="surfaces" class="panel"><h2>Why the side windows and mirrors often stay clear</h2>
+      <p><strong>Front windshield.</strong> Sloped glass faces a large patch of open sky. On a clear night it can lose enough heat to collect frost while the side glass stays warmer.</p>
+      <p><strong>Side windows.</strong> Upright glass faces more of the ground, nearby cars and buildings, which radiate heat back to it. One forecast represents the exposed glass of a typical side window. A wall beside the driver's door or early sun on the passenger side can give the four panes different temperatures.</p>
+      <p><strong>Side mirrors.</strong> The mirror is upright and its housing can shield part of the sky. The model estimates one unfolded, unheated exterior mirror. On a cold, moist night, the glass can still cool enough for frost to grow.</p>
+      <p>In an open parking lot, the model assumes that the sky fills about 84% of the front windshield's view for heat exchange, 50% for side glass and 36% for a mirror. It varies those last two estimates across scenarios to account for differences in tilt and shelter. Rain interception, glass thickness and absorbed sunlight also vary by surface.</p>
     </section>
 
-    <section class="panel"><h2>Why mirrors and side glass behave differently</h2>
-      <p>Side windows and mirrors are typically more upright and see less open sky than the front or rear glass. The mirror housing can also shelter the glass. That reduces radiative cooling when temperatures are close to the frost threshold. In colder conditions those surfaces can still cross it. Angle, housing, coating, and whether a mirror heater was on also matter.</p>
+    <section id="cabin" class="panel"><h2>How the cabin affects the glass</h2>
+      <p>The website assumes raised windows and a closed cabin. Heat passes between cabin air and the windshield or side glass. Ventilation can shift the outside glass temperature slightly, especially just after parking. The mirror exchanges heat with outdoor air and its housing.</p>
+      <p>These forecasts cover ice on the <strong>outside</strong> of the glass. Inside the car, opening a window can carry moisture away when the outdoor air is drier. Estimating inside frost would also require the cabin humidity. <a href="https://hit.ijournals.cn/hitxb_en/article/abstract/20190126">Parked-car ventilation study</a></p>
     </section>
 
     <section class="panel"><h2>How observations can improve the model</h2>
-      <p>A record of the original forecast, parking setup, surface, check time, and actual frost is more useful than weather data alone. Start with the front windshield and keep the other surfaces as separate comparisons. Once there are enough frost and clear mornings, tune a few parameters, such as effective sky exposure or how much indirect sun reaches the glass, then evaluate against later observations before trusting the change. Melt observations help tune daytime heating separately.</p>
-      <p>One field study measured dew and glass temperatures across eight cars at five sites. It offers evidence for surface differences, but it does not provide a downloadable dataset of frost and thaw times. Purdue Mesonet measurements can check local forecast inputs such as temperature and sunlight. Your observations supply the missing labels for your car and parking spot. The site records them and counts misses, with calibration left for a later fit and test.</p>
+      <p>Log what you see on each surface, including mornings when the glass stays clear. Record when you checked and, if you see it happen, when the ice clears. If only one side frosts, name the pane or mirror in the note and mention nearby shelter or morning sun. The rear window is also available in the observation log.</p>
+      <p>The forecast uses weather data and your parking settings to calculate glass temperature and ice buildup. Two cars in the same forecast area can start the night with different amounts of water on the glass. One may face open sky while the other sits under a carport. Logs from your parking spot could help tune sky exposure and morning sunlight. Testing those adjustments on later mornings would show whether they improve frost and thaw estimates.</p>
+      <p>Researchers measured temperature and dew on car surfaces and tested a dew scale on eight cars at five sites. Those observations help explain why glass angle matters. Purdue Mesonet measurements can help check the weather inputs.</p>
       <ul class="source-list">
         <li><a href="https://open-meteo.com/en/docs">Open-Meteo forecast variables</a></li>
         <li><a href="https://www.weather.gov/source/zhu/ZHU_Training_Page/fog_stuff/Dew_Frost/Dew_Frost.htm">National Weather Service dew and frost science</a></li>

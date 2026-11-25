@@ -5,8 +5,6 @@ const STEP_SECONDS = 120;
 const STEP = STEP_SECONDS * 1000;
 const SIGMA = 5.670374419e-8;
 const GLASS_EMISSIVITY = 0.84;
-const GLASS_CAPACITY = 9_400;
-const CABIN_CAPACITY = 25_000;
 const HEAT_OF_FUSION = 333_500;
 const HEAT_OF_SUBLIMATION = 2_834_000;
 const HEAT_OF_VAPORIZATION = 2_500_000;
@@ -20,6 +18,12 @@ export const DEFAULTS = Object.freeze({
   sun: 'moderate',
   windows: 'closed',
   wet: false,
+});
+
+export const SURFACES = Object.freeze({
+  front: 'Front windshield',
+  side: 'Side windows',
+  mirror: 'Side mirrors',
 });
 
 const weatherVariables = [
@@ -53,10 +57,30 @@ const windowProfiles = {
   open: { glassCoupling: 5, ambientCoupling: 9, windCoupling: 0.75 },
 };
 
+// Effective geometry and material estimates per square metre of exterior glass.
+// Capacity is J/(m² K). Sky view and rain capture describe an open parking spot.
+const surfaceProfiles = {
+  front: {
+    skyView: 0.84, skySpread: 0, glassCapacity: 9_400, rainCapture: 1,
+    direct: 1, directSpread: 0, diffuse: 1, solarAbsorption: 0.22,
+  },
+  side: {
+    skyView: 0.50, skySpread: 0.08, glassCapacity: 7_500, rainCapture: 0.30,
+    direct: 0.8, directSpread: 0.55, diffuse: 0.75, solarAbsorption: 0.22,
+  },
+  mirror: {
+    skyView: 0.36, skySpread: 0.10, glassCapacity: 5_500, rainCapture: 0.18,
+    direct: 0.7, directSpread: 0.55, diffuse: 0.60, solarAbsorption: 0.12,
+  },
+};
+
+// The outdoor mirror housing exchanges heat with outside air, independently of cabin ventilation.
+const mirrorHousing = { glassCoupling: 4, ambientCoupling: 6, windCoupling: 1.2 };
+
 const scenarios = {
-  central: { skyBias: 0, wind: 1, sun: 1 },
-  colder: { skyBias: -12, wind: 0.82, sun: 0.68 },
-  warmer: { skyBias: 15, wind: 1.18, sun: 1.20 },
+  central: { skyBias: 0, wind: 1, sun: 1, geometry: 0 },
+  colder: { skyBias: -12, wind: 0.82, sun: 0.68, geometry: 1 },
+  warmer: { skyBias: 15, wind: 1.18, sun: 1.20, geometry: -1 },
 };
 
 const localFormatter = new Intl.DateTimeFormat('en-CA', {
@@ -230,33 +254,39 @@ function weatherReader(weather, start, end) {
 }
 
 function heatExchange(state, wx, profile, scenario) {
+  const { surface, backing } = profile;
   const windAtGlass = Math.max(0.05, 0.68 * wx.wind * profile.parking.windScale * scenario.wind);
   const airDifference = wx.air - state.glass;
   const outerCoupling = Math.max(1.6, Math.hypot(
     0.84 * Math.abs(airDifference) ** (1 / 3),
     3.26 * windAtGlass ** 0.89,
   ));
-  const glassToCabin = profile.windows.glassCoupling * (state.glass - state.cabin);
+  const glassToBacking = backing.glassCoupling * (state.glass - state.back);
   const outside = outerCoupling * airDifference;
-  const skyView = profile.parking.skyView;
+  const surfaceView = surface.skyView + scenario.geometry * surface.skySpread;
+  const skyView = profile.parking.skyView * (surfaceView / parkingProfiles.open.skyView);
   const incoming = skyView * skyRadiation(wx, scenario) + (1 - skyView) * blackBody(wx.air);
   const longwave = GLASS_EMISSIVITY * (incoming - blackBody(state.glass));
-  const solar = scenario.sun * profile.parking.lightScale *
-    (wx.direct * profile.sun.direct + wx.diffuse * profile.sun.diffuse);
-  const cabinExchange = (profile.windows.ambientCoupling + profile.windows.windCoupling * windAtGlass) *
-    (wx.air - state.cabin);
+  const daylight = scenario.sun * profile.parking.lightScale;
+  const direct = wx.direct * profile.sun.direct;
+  const diffuse = wx.diffuse * profile.sun.diffuse;
+  const faceSolar = daylight *
+    (direct * (surface.direct - scenario.geometry * surface.directSpread) + diffuse * surface.diffuse);
+  const backExchange = (backing.ambientCoupling + backing.windCoupling * windAtGlass) *
+    (wx.air - state.back);
   return {
     outerCoupling,
-    glassFlux: outside - glassToCabin + longwave + 0.22 * solar,
-    cabinFlux: cabinExchange + glassToCabin + 0.13 * solar,
+    glassFlux: outside - glassToBacking + longwave + surface.solarAbsorption * faceSolar,
+    backFlux: backExchange + glassToBacking + profile.backAbsorption * (daylight * (direct + diffuse)),
   };
 }
 
 function advance(state, wx, profile, scenario, seconds) {
-  const { outerCoupling, glassFlux, cabinFlux } = heatExchange(state, wx, profile, scenario);
+  const { outerCoupling, glassFlux, backFlux } = heatExchange(state, wx, profile, scenario);
   let thermalEnergy = glassFlux * seconds;
-  state.cabin += cabinFlux * seconds / CABIN_CAPACITY;
-  state.water = Math.min(WATER_CAPACITY, state.water + wx.rain * profile.parking.wetting * seconds / 3600);
+  state.back += backFlux * seconds / profile.backCapacity;
+  const rain = wx.rain * profile.parking.wetting * profile.surface.rainCapture;
+  state.water = Math.min(WATER_CAPACITY, state.water + rain * seconds / 3600);
 
   const vaporDensityFactor = 1 / (461.5 * (273.15 + (wx.air + state.glass) / 2));
   const massCoupling = outerCoupling / 1_250;
@@ -273,7 +303,7 @@ function advance(state, wx, profile, scenario, seconds) {
     thermalEnergy += accepted * HEAT_OF_VAPORIZATION;
   }
 
-  let glassEnergy = state.glass * GLASS_CAPACITY + thermalEnergy;
+  let glassEnergy = state.glass * profile.surface.glassCapacity + thermalEnergy;
   // With both phases present, hold the glass at freezing while latent heat is exchanged.
   if (glassEnergy < 0 && state.water > 0) {
     const freeze = Math.min(state.water, -glassEnergy / HEAT_OF_FUSION);
@@ -286,7 +316,7 @@ function advance(state, wx, profile, scenario, seconds) {
     state.water = Math.min(WATER_CAPACITY, state.water + melt);
     glassEnergy -= melt * HEAT_OF_FUSION;
   }
-  state.glass = glassEnergy / GLASS_CAPACITY;
+  state.glass = glassEnergy / profile.surface.glassCapacity;
 }
 
 function publicPoint(t, air, glass, moisture, ice) {
@@ -296,7 +326,7 @@ function publicPoint(t, air, glass, moisture, ice) {
 function simulate(readWeather, timings, profile, scenario, includePoints) {
   const { start, morningStart, morningEnd, departure, end, wetAt } = timings;
   const first = readWeather(start);
-  const state = { glass: first.air, cabin: first.air, water: 0, ice: 0 };
+  const state = { glass: first.air, back: first.air, water: 0, ice: 0 };
   const points = [];
   let atDeparture;
   let lastVisibleIce = null;
@@ -334,7 +364,9 @@ function simulate(readWeather, timings, profile, scenario, includePoints) {
   return { atDeparture, points, hadIce, clears: clearAfterIce };
 }
 
-export function predict(weather, settings = DEFAULTS, date = nextLocalDate(getLocalDate())) {
+export function predict(weather, settings = DEFAULTS, date = nextLocalDate(getLocalDate()), surface = 'front') {
+  if (surface === 'mirrors') surface = 'mirror';
+  if (!Object.hasOwn(surfaceProfiles, surface)) throw new Error('Unknown forecast surface.');
   const ownSettings = normalizeSettings(settings);
   const previous = dateByOffset(date, -1);
   const morningStart = localTime(date, '00:00');
@@ -345,9 +377,12 @@ export function predict(weather, settings = DEFAULTS, date = nextLocalDate(getLo
   const timings = { start, morningStart, morningEnd, departure, end, wetAt: localTime(previous, '21:00') };
   const readWeather = weatherReader(weather, start, end);
   const profile = {
+    surface: surfaceProfiles[surface],
     parking: parkingProfiles[ownSettings.parking],
     sun: sunlightProfiles[ownSettings.sun],
-    windows: windowProfiles[ownSettings.windows],
+    backing: surface === 'mirror' ? mirrorHousing : windowProfiles[ownSettings.windows],
+    backCapacity: surface === 'mirror' ? 8_000 : 25_000,
+    backAbsorption: surface === 'mirror' ? 0.16 : 0.13,
     wet: ownSettings.wet,
   };
   const nominal = simulate(readWeather, timings, profile, scenarios.central, true);
@@ -370,6 +405,7 @@ export function predict(weather, settings = DEFAULTS, date = nextLocalDate(getLo
   } : null;
   return {
     date,
+    surface,
     risk,
     atDeparture: { glass: nominalAtDeparture.glass, air: nominalAtDeparture.air, ice: nominalAtDeparture.ice },
     melt,
@@ -378,6 +414,8 @@ export function predict(weather, settings = DEFAULTS, date = nextLocalDate(getLo
     settings: ownSettings,
     glassRange: [Math.min(...estimates.map(r => r.atDeparture.glass)), Math.max(...estimates.map(r => r.atDeparture.glass))],
     departure,
-    model: 'one-dimensional glass/cabin heat and moisture balance, three uncalibrated exposure cases',
+    model: surface === 'mirror'
+      ? 'one-dimensional glass/housing heat and moisture balance, three uncalibrated exposure cases'
+      : 'one-dimensional glass/cabin heat and moisture balance, three uncalibrated exposure cases',
   };
 }

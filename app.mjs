@@ -23,12 +23,21 @@ const observations = {
   clear: 'Clear', frost: 'Frost outside', ice: 'Ice outside',
   'inside-fog': 'Fog or frost inside', inside: 'Fog or frost inside', wet: 'Wet, no frost',
 };
-const surfaces = { front: 'Front windshield', rear: 'Rear window', side: 'Side windows', mirrors: 'Mirrors' };
+const surfaces = { front: 'Front windshield', rear: 'Rear windshield', side: 'Side windows', mirrors: 'Side mirrors' };
+const surfaceButtons = [...document.querySelectorAll('.surface-options [data-surface]')];
+const forecastSurfaces = surfaceButtons.map(button => button.dataset.surface);
+// Keep "mirrors" in observations so older exports and entries retain their surface ID.
+function observationSurface(surface) {
+  return surface === 'mirror' ? 'mirrors' : surface;
+}
 const form = $('settings');
 const observationForm = $('observation');
 const canvas = $('trace');
 
 let selectedDate;
+let selectedSurface = 'front';
+let forecastDays = [];
+let unavailableText = 'Forecast unavailable';
 let weather;
 let fetchedAt;
 let currentForecast;
@@ -89,7 +98,7 @@ function readEmailForecast() {
   const wet = query.get('wet');
   if (wet === 'true' || wet === 'false') settings.wet = wet === 'true';
   return {
-    date, risk, issuedAt, source: 'evening email', settings,
+    date, surface: 'front', risk, issuedAt, source: 'evening email', settings,
     glass: Number.isFinite(glass) && glass > -150 && glass < 180 ? glass : null,
     meltStart: fromTimestamp(query.get('meltStart')), meltEnd: fromTimestamp(query.get('meltEnd')),
   };
@@ -101,13 +110,13 @@ function readSettings() {
     departure: data.get('departure') || DEFAULTS.departure,
     parking: data.get('parking') || DEFAULTS.parking,
     sun: data.get('sun') || DEFAULTS.sun,
-    windows: data.get('windows') || DEFAULTS.windows,
     wet: ['on', 'true', 'yes', 'wet', '1'].includes(data.get('wet')),
   };
 }
 
 function applySettings(settings) {
-  for (const [name, value] of Object.entries(settings)) {
+  for (const name of ['departure', 'parking', 'sun', 'wet']) {
+    const value = settings[name];
     const input = form.elements.namedItem(name);
     if (!input) continue;
     if (input.type === 'checkbox') input.checked = Boolean(value);
@@ -115,16 +124,16 @@ function applySettings(settings) {
   }
 }
 
-function deviceForecast(prediction, settings) {
+function deviceForecast(prediction, settings, surface) {
   return {
-    date: prediction.date, risk: prediction.risk, issuedAt: fetchedAt, source: 'browser forecast',
-    savedAt: Date.now(), settings: { ...settings }, glass: prediction.atDeparture.glass,
+    date: prediction.date, surface, risk: prediction.risk, issuedAt: fetchedAt, source: 'browser forecast',
+    savedAt: Date.now(), settings: prediction.settings, glass: prediction.atDeparture.glass,
     meltStart: prediction.melt?.start ?? null, meltEnd: prediction.melt?.end ?? null,
   };
 }
 
 function setupKey(settings) {
-  const { departure, parking, sun, windows, wet } = settings;
+  const { departure, parking, sun, windows = DEFAULTS.windows, wet } = settings;
   return [departure, parking, sun, windows, wet ? 'wet' : 'dry'].join('|');
 }
 
@@ -134,24 +143,30 @@ function snapshotsFor(date) {
   return snapshots.source ? { [setupKey(snapshots.settings)]: snapshots } : snapshots;
 }
 
-function saveSnapshot(snapshot, key) {
-  savedForecasts[snapshot.date] = { ...snapshotsFor(snapshot.date), [key]: snapshot };
-  store(forecastsKey, savedForecasts);
+function snapshotKey(settings, surface) {
+  const key = setupKey(settings);
+  return surface === 'front' ? key : surface + '|' + key;
 }
 
-function preserveForecast(prediction, settings) {
-  if (!prediction || !fetchedAt) return;
-  const candidate = deviceForecast(prediction, settings);
-  const key = setupKey(settings);
+function saveSnapshot(snapshot, key) {
+  savedForecasts[snapshot.date] = { ...snapshotsFor(snapshot.date), [key]: snapshot };
+}
+
+function preserveForecast(prediction, settings, surface) {
+  if (!prediction || !fetchedAt) return false;
+  const candidate = deviceForecast(prediction, settings, surface);
+  const key = snapshotKey(settings, surface);
   const prior = snapshotsFor(prediction.date)[key];
   const isEvening = candidate.date === nextLocalDate(getLocalDate(new Date(candidate.issuedAt))) &&
     localHours.format(new Date(candidate.issuedAt)) >= '20:00';
   const isCurrentOrFuture = candidate.date >= getLocalDate();
-  if (!isCurrentOrFuture) return;
+  if (!isCurrentOrFuture) return false;
   candidate.source = isEvening ? 'evening on-site forecast' : 'browser forecast';
   if (!prior || (prior.source === 'browser forecast' && isEvening)) {
     saveSnapshot(candidate, key);
+    return true;
   }
+  return false;
 }
 
 function makeElement(tag, className, text) {
@@ -180,12 +195,17 @@ function upcoming(settings) {
 
 function getPredictions(settings) {
   return upcoming(settings).map(date => {
-    if (!weather) return { date, prediction: null };
-    try {
-      return { date, prediction: predict(weather, settings, date) };
-    } catch {
-      return { date, prediction: null };
+    const predictions = {};
+    if (weather) {
+      for (const surface of forecastSurfaces) {
+        try {
+          predictions[surface] = predict(weather, settings, date, surface);
+        } catch {
+          predictions[surface] = null;
+        }
+      }
     }
+    return { date, predictions };
   });
 }
 
@@ -200,70 +220,97 @@ function formatMelt(start, end) {
   return 'Not estimated';
 }
 
-function renderDays(days, settings, unavailableLabel) {
+function renderSelection() {
   const target = $('days');
-  target.replaceChildren(...days.map(({ date, prediction }) => {
+  const name = surfaces[observationSurface(selectedSurface)];
+  $('days-title').textContent = name + ' outlook';
+  target.replaceChildren(...forecastDays.map(({ date, predictions }) => {
+    const prediction = predictions[selectedSurface];
     const day = makeElement('button', 'day-option' + (date === selectedDate ? ' active' : ''));
     day.type = 'button';
     day.dataset.date = date;
     day.setAttribute('aria-pressed', String(date === selectedDate));
     const title = makeElement('span', 'day-label', dateLabel(date));
-    const note = makeElement('small', 'day-risk', prediction ? verdict[prediction.risk] : unavailableLabel);
+    const note = makeElement('small', 'day-risk', prediction ? verdict[prediction.risk] : unavailableText);
     if (prediction) {
       day.dataset.risk = prediction.risk;
       note.dataset.risk = prediction.risk;
     }
     day.append(title, note);
-    day.addEventListener('click', () => selectDate(date, true));
+    day.addEventListener('click', () => {
+      selectedDate = date;
+      renderSelection();
+      target.querySelector(`[data-date="${date}"]`)?.focus();
+    });
     return day;
   }));
 
-  function selectDate(date, focus) {
-    selectedDate = date;
-    const prediction = days.find(day => day.date === date)?.prediction;
-    renderDays(days, settings, unavailableLabel);
-    paintForecast(prediction, settings, unavailableLabel);
-    const observationDate = observationForm.elements.namedItem('date');
-    if (observationDate && date <= getLocalDate() && !observationDate.value) observationDate.value = date;
-    paintObservationLink();
-    if (focus) target.querySelector(`[data-date="${date}"]`)?.focus();
+  const { predictions } = forecastDays.find(day => day.date === selectedDate);
+  for (const button of surfaceButtons) {
+    const surface = button.dataset.surface;
+    const risk = predictions[surface]?.risk;
+    const label = button.querySelector('small');
+    label.textContent = verdict[risk] ?? unavailableText;
+    label.dataset.risk = risk ?? 'unknown';
+    button.setAttribute('aria-pressed', String(surface === selectedSurface));
   }
+  paintForecast(predictions[selectedSurface], readSettings());
 }
 
 function render(unavailableLabel = 'Forecast unavailable') {
   const settings = readSettings();
-  const days = getPredictions(settings);
-  if (!days.some(day => day.date === selectedDate)) selectedDate = days[0].date;
-  renderDays(days, settings, unavailableLabel);
-  const prediction = days.find(day => day.date === selectedDate)?.prediction;
-  paintForecast(prediction, settings, unavailableLabel);
-  for (const day of days) preserveForecast(day.prediction, settings);
+  unavailableText = unavailableLabel;
+  forecastDays = getPredictions(settings);
+  if (!forecastDays.some(day => day.date === selectedDate)) selectedDate = forecastDays[0].date;
+  renderSelection();
+  let savedNew = false;
+  for (const { predictions } of forecastDays) {
+    for (const [surface, prediction] of Object.entries(predictions)) {
+      if (preserveForecast(prediction, settings, surface)) savedNew = true;
+    }
+  }
+  if (savedNew) store(forecastsKey, savedForecasts);
   paintObservationLink();
 }
 
-function paintForecast(prediction, settings, unavailableLabel) {
+function paintForecast(prediction, settings) {
   currentForecast = prediction;
   $('forecast-date').textContent = dateLabel(selectedDate);
-  $('risk').dataset.risk = prediction?.risk ?? 'unknown';
-  $('risk').textContent = prediction ? verdict[prediction.risk] : unavailableLabel;
+  const label = surfaces[observationSurface(selectedSurface)];
+  $('surface-title').textContent = label;
+  $('chart-glass').textContent = label;
+  canvas.setAttribute('aria-label', label + ' temperature forecast');
+  $('surface-note').textContent = selectedSurface === 'side'
+    ? 'Estimate for a typical upright side window. Shade and shelter can differ across the four windows.'
+    : selectedSurface === 'mirror'
+      ? 'Estimate for an unheated exterior mirror. Housing, shade and parking direction can make the two mirrors differ.'
+      : '';
   $('glass').textContent = prediction ? `${Math.round(prediction.atDeparture.glass)}°F` : '—';
   $('air').textContent = prediction ? `${Math.round(prediction.atDeparture.air)}°F` : '—';
-  $('melt').textContent = prediction?.melt ? formatMelt(prediction.melt.start, prediction.melt.end)
-    : prediction?.hadIce ? 'Not estimated' : prediction ? 'No melt needed' : '—';
-  $('melt-note').textContent = prediction?.melt
-    ? 'Passive thaw with your selected light exposure. Shade and ice thickness can shift this window.'
-    : prediction?.hadIce ? 'Ice may persist past the available forecast hours.'
-      : prediction ? 'The model did not estimate a meaningful layer of outside ice for these settings.' : '';
+  let thaw = '—';
+  let thawNote = '';
+  if (prediction?.melt?.start) {
+    thaw = formatMelt(prediction.melt.start, prediction.melt.end);
+    thawNote = 'Passive thaw with your selected light exposure. Shade and ice thickness can shift this window.';
+  } else if (prediction?.hadIce) {
+    thaw = 'May persist past afternoon';
+    thawNote = 'Ice may still be present at the end of the modeled period.';
+  } else if (prediction) {
+    thaw = 'No melt needed';
+    thawNote = 'The model estimates little or no outside ice for these settings.';
+  }
+  $('melt').textContent = thaw;
+  $('melt-note').textContent = thawNote;
 
   const departure = toReadableTime(settings.departure);
   const statements = {
     low: `Little or no outside frost is expected at your ${departure} departure.`,
-    possible: `Conditions are close enough that exposing the car to more sky or less wind could leave frost at ${departure}.`,
+    possible: `Some of the modeled conditions leave outside frost or ice at ${departure}.`,
     likely: `The estimated glass temperature and moisture support outside frost or ice at ${departure}.`,
   };
   $('verdict-copy').textContent = prediction ? statements[prediction.risk] : 'The estimate will appear once hourly weather data is available.';
   $('trace-summary').textContent = prediction
-    ? `At departure the windshield is estimated at ${Math.round(prediction.atDeparture.glass)}°F and the air at ${Math.round(prediction.atDeparture.air)}°F. ${prediction.melt ? 'Passive melt ' + formatMelt(prediction.melt.start, prediction.melt.end) + '.' : ''}`
+    ? `Estimated glass temperature at departure is ${Math.round(prediction.atDeparture.glass)}°F for the ${label.toLowerCase()}, with air at ${Math.round(prediction.atDeparture.air)}°F.`
     : 'Hourly chart unavailable.';
   paintChart(prediction);
 }
@@ -379,10 +426,21 @@ async function refresh() {
   }
 }
 
-function forecastForObservation(date) {
-  return (emailForecast?.date === date ? emailForecast : null) ??
-    reports.find(report => report.date === date && (report.surface ?? 'front') === 'front')?.forecast ??
-    snapshotsFor(date).email ?? snapshotsFor(date)[setupKey(readSettings())] ?? null;
+function forecastForObservation(date, surface) {
+  if (surface === 'rear') return null;
+  const saved = snapshotsFor(date);
+  const emailed = surface === 'front' ? (emailForecast?.date === date ? emailForecast : saved.email) : null;
+  const prior = reports.find(report => report.date === date && (report.surface ?? 'front') === surface);
+  // Reports already linked keep their original forecast when the observation is edited.
+  const modelSurface = surface === 'mirrors' ? 'mirror' : surface;
+  const settings = readSettings();
+  const linked = prior?.forecast ?? emailed ?? saved[snapshotKey(settings, modelSurface)];
+  if (linked) return linked;
+  // Earlier versions let the driver select cabin ventilation. Match a unique
+  // historical setup so those snapshots can still be linked to observations.
+  const older = ['cracked', 'open'].map(windows =>
+    saved[snapshotKey({ ...settings, windows }, modelSurface)]).filter(Boolean);
+  return older.length === 1 ? older[0] : null;
 }
 
 function observationLabel(report) {
@@ -394,14 +452,14 @@ function paintObservationLink() {
   if (!label) return;
   const date = observationForm.elements.namedItem('date')?.value;
   const surface = observationForm.elements.namedItem('surface')?.value ?? 'front';
-  if (surface !== 'front') {
-    label.textContent = 'Saved as an observation. The prediction covers the front windshield.';
+  if (surface === 'rear') {
+    label.textContent = 'Rear windshield observations are saved in your log.';
     return;
   }
-  const forecast = forecastForObservation(date);
+  const forecast = forecastForObservation(date, surface);
   label.textContent = forecast
-    ? `Linked ${forecast.source} from ${dateLabel(getLocalDate(new Date(forecast.issuedAt)), true)} at ${timeFormat.format(forecast.issuedAt)} ET · ${verdict[forecast.risk]} for ${toReadableTime(forecast.settings.departure)}.`
-    : 'No earlier forecast is saved for this date and setup.';
+    ? `${surfaces[surface]} · ${verdict[forecast.risk]} for ${toReadableTime(forecast.settings.departure)}. Linked to the ${forecast.source} from ${dateLabel(getLocalDate(new Date(forecast.issuedAt)), true)} at ${timeFormat.format(forecast.issuedAt)} ET.`
+    : 'No earlier forecast is saved for this surface, date and setup.';
 }
 
 function comparison(report) {
@@ -435,15 +493,17 @@ function thawComparison(report) {
 function paintScore() {
   const target = $('score-summary');
   if (!target) return;
-  const front = reports.filter(report => (report.surface ?? 'front') === 'front');
-  const icy = front.filter(report => ['frost', 'ice'].includes(report.outcome)).length;
-  const iceFree = front.filter(report => ['clear', 'wet'].includes(report.outcome)).length;
-  const unlikely = front.filter(report => report.forecast?.risk === 'low' &&
+  const surface = observationForm.elements.namedItem('surface').value;
+  const matching = reports.filter(report => (report.surface ?? 'front') === surface);
+  const icy = matching.filter(report => ['frost', 'ice'].includes(report.outcome)).length;
+  const iceFree = matching.filter(report => ['clear', 'wet'].includes(report.outcome)).length;
+  const unlikely = matching.filter(report => report.forecast?.risk === 'low' &&
     timeMatchesDeparture(report) && ['clear', 'wet', 'frost', 'ice'].includes(report.outcome));
   const misses = unlikely.filter(report => ['frost', 'ice'].includes(report.outcome)).length;
-  target.textContent = `Front windshield · ${icy} with frost or ice · ${iceFree} without outside ice. ` +
-    (unlikely.length ? `${misses} of ${unlikely.length} “unlikely” forecasts missed frost or ice (checked within an hour of departure).`
-      : 'Record the check time to compare it with the forecast at departure.');
+  const counts = `${surfaces[surface]} · ${icy} with frost or ice · ${iceFree} without outside ice.`;
+  const detail = unlikely.length ? `${misses} of ${unlikely.length} “unlikely” forecasts missed frost or ice (checked within an hour of departure).`
+    : 'Record the check time to compare it with the forecast at departure.';
+  target.textContent = surface === 'rear' ? counts : counts + ' ' + detail;
 }
 
 function paintHistory() {
@@ -459,7 +519,7 @@ function paintHistory() {
       const forecast = report.forecast;
       const summary = forecast
         ? `${verdict[forecast.risk]} was forecast${comparison(report) ? ' · ' + comparison(report) : ''}.`
-        : (report.surface ?? 'front') === 'front' ? 'No matching forecast saved.' : '';
+        : report.surface !== 'rear' ? 'No matching forecast saved.' : '';
       row.append(heading, result);
       if (summary) row.append(makeElement('p', 'history-summary', summary));
       if (report.meltTime) {
@@ -484,7 +544,7 @@ function saveObservation(event) {
     $('log-status').textContent = 'Choose today or an earlier date and record what you saw.';
     return;
   }
-  const forecast = surface === 'front' ? forecastForObservation(date) : null;
+  const forecast = forecastForObservation(date, surface);
   const report = {
     date, surface, outcome, observedTime: data.get('observedTime') || null,
     meltTime: data.get('meltTime') || null, note: String(data.get('note') ?? '').trim(),
@@ -523,9 +583,23 @@ if (observedDate) {
 }
 if (emailForecast) {
   saveSnapshot(emailForecast, 'email');
+  store(forecastsKey, savedForecasts);
   selectedDate = emailForecast.date;
 }
 
+let observationStarted = false;
+observationForm.addEventListener('input', () => { observationStarted = true; });
+for (const button of surfaceButtons) {
+  button.addEventListener('click', () => {
+    selectedSurface = button.dataset.surface;
+    renderSelection();
+    if (!observationStarted) {
+      observationForm.elements.namedItem('surface').value = observationSurface(selectedSurface);
+      paintObservationLink();
+      paintScore();
+    }
+  });
+}
 form.addEventListener('change', () => {
   store(preferencesKey, readSettings());
   render();
@@ -533,7 +607,10 @@ form.addEventListener('change', () => {
 form.addEventListener('submit', event => event.preventDefault());
 $('refresh').addEventListener('click', refresh);
 observationForm.addEventListener('submit', saveObservation);
-observationForm.addEventListener('change', paintObservationLink);
+observationForm.addEventListener('change', () => {
+  paintObservationLink();
+  paintScore();
+});
 $('export').addEventListener('click', exportHistory);
 if ('ResizeObserver' in window) new ResizeObserver(() => paintChart(currentForecast)).observe(canvas);
 

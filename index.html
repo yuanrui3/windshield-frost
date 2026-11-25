@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A windshield frost and natural thaw forecast for West Lafayette, Indiana.">
+  <meta name="description" content="Frost and natural thaw forecasts for windshields, side windows and side mirrors in West Lafayette, Indiana.">
   <meta name="theme-color" content="#0c2230">
   <title>Windshield forecast · West Lafayette</title>
   <link rel="stylesheet" href="./styles.css">
@@ -21,17 +21,28 @@
   </header>
   <main class="shell">
     <section class="intro">
-      <div><p class="location">West Lafayette, Indiana</p><h1>Will I need to scrape?</h1><p>Windshield frost at departure and when it may melt on its own.</p></div>
+      <div><p class="location">West Lafayette, Indiana</p><h1>Will I need to scrape?</h1><p>Check the windshield, side windows and mirrors before you leave.</p></div>
       <button class="secondary" id="refresh" type="button">Refresh forecast</button>
     </section>
     <p id="status" role="status" class="status">Loading local weather…</p>
 
     <div class="forecast-layout">
       <section class="panel results" aria-labelledby="forecast-date">
-        <div id="days" class="days" aria-label="Forecast mornings"></div>
-        <div class="result-header">
-          <div><h2 id="forecast-date">Morning forecast</h2><p id="verdict-copy">Waiting for the hourly weather forecast.</p></div>
-          <p id="risk" class="risk">—</p>
+        <p id="days-title" class="outlook-caption">Front windshield outlook</p>
+        <div id="days" class="days" role="group" aria-labelledby="days-title"></div>
+        <h2 id="forecast-date">Morning forecast</h2>
+        <fieldset class="surface-picker">
+          <legend>Surfaces at departure</legend>
+          <div class="surface-options">
+            <button type="button" data-surface="front" aria-pressed="true"><span>Front windshield</span><small>Loading</small></button>
+            <button type="button" data-surface="side" aria-pressed="false"><span>Side windows</span><small>Loading</small></button>
+            <button type="button" data-surface="mirror" aria-pressed="false"><span>Side mirrors</span><small>Loading</small></button>
+          </div>
+        </fieldset>
+        <div class="surface-detail">
+          <h3 id="surface-title">Front windshield</h3>
+          <p id="verdict-copy">Waiting for the hourly weather forecast.</p>
+          <p id="surface-note" class="muted"></p>
         </div>
         <dl class="metrics">
           <div><dt>Glass at departure</dt><dd id="glass">—</dd></div>
@@ -41,8 +52,8 @@
         <p id="melt-note" class="muted"></p>
         <div class="chart">
           <h3>Overnight glass temperature</h3>
-          <div class="legend" aria-hidden="true"><span class="glass-key">Windshield</span><span class="air-key">Air</span><span class="frost-key">Frost point</span></div>
-          <canvas id="trace" width="720" height="255" role="img" aria-describedby="trace-summary">Hourly windshield, air, and frost-point temperatures.</canvas>
+          <div class="legend" aria-hidden="true"><span class="glass-key" id="chart-glass">Windshield</span><span class="air-key">Air</span><span class="frost-key">Frost point</span></div>
+          <canvas id="trace" width="720" height="255" role="img" aria-label="Glass temperature forecast" aria-describedby="trace-summary">Glass, air and frost-point temperatures.</canvas>
           <p id="trace-summary" class="muted"></p>
         </div>
       </section>
@@ -65,17 +76,10 @@
               <option value="full">Direct sun</option>
             </select>
           </label>
-          <label>Side windows overnight
-            <select name="windows">
-              <option value="closed" selected>Closed</option>
-              <option value="cracked">Cracked open</option>
-              <option value="open">Open</option>
-            </select>
-          </label>
-          <label class="check"><input type="checkbox" name="wet"> Windshield starts wet</label>
+          <label class="check"><input type="checkbox" name="wet"> Exposed glass starts wet</label>
         </form>
-        <p class="muted">Times are local. The estimate assumes the defroster is off.</p>
-        <a href="./model.html#cabin">How windows affect the glass</a>
+        <p class="muted">Times are local. Estimates assume the car is parked with windows closed and heaters off.</p>
+        <a href="./model.html#surfaces">How the glass surfaces differ</a>
       </section>
     </div>
 
@@ -85,7 +89,7 @@
         <div class="form-grid">
           <label>Morning<input type="date" name="date" required></label>
           <label>Surface
-            <select name="surface"><option value="front">Front windshield</option><option value="rear">Rear windshield</option><option value="side">Side glass</option><option value="mirrors">Side mirrors</option></select>
+            <select name="surface"><option value="front">Front windshield</option><option value="side">Side windows</option><option value="mirrors">Side mirrors</option><option value="rear">Rear windshield (observation only)</option></select>
           </label>
           <label>What you saw
             <select name="outcome" required><option value="">Choose an observation</option><option value="clear">Clear</option><option value="frost">Outside frost</option><option value="ice">Outside ice film</option><option value="inside-fog">Inside fog or frost</option></select>
