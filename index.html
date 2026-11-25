@@ -63,13 +63,16 @@
         <h2 id="settings-title">Your parking setup</h2>
         <form id="settings">
           <label>Departure time<input type="time" name="departure" value="08:00" required></label>
-          <label>Overnight parking
-            <select name="parking">
-              <option value="open" selected>Open sky</option>
-              <option value="sheltered">Beside buildings or trees</option>
-              <option value="covered">Under a roof or carport</option>
-            </select>
-          </label>
+          <div>
+            <label>Overnight parking
+              <select name="parking" aria-describedby="parking-help">
+                <option value="open" selected>Open sky</option>
+                <option value="sheltered">Partly sheltered by a wall or trees</option>
+                <option value="covered">Under a roof or carport</option>
+              </select>
+            </label>
+            <p id="parking-help" class="muted">Look up and outward from the glass you’re checking. Choose partial shelter if a nearby wall or overhanging branches block a broad patch of sky. If a building is only visible along the horizon, choose Open sky.</p>
+          </div>
           <label>Morning sunlight
             <select name="sun">
               <option value="shade">Mostly shade</option>
